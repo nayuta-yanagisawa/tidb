@@ -64,7 +64,7 @@ func TestFormatPreparedStmt(t *testing.T) {
 
 	stmt := &executor.ExecStmt{Text: sql, StmtNode: stmtNodes[0]}
 	preparedSQL := executor.FormatPreparedStmt(stmt, params)
-	assert.Equal(t, preparedSQL, "select 1, 2, NULL;")
+	assert.Equal(t, "select 1, 2, NULL;", preparedSQL)
 
 }
 

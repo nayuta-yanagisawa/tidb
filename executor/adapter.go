@@ -821,39 +821,23 @@ func FormatSQL(sql string, pps variable.PreparedParams) stringutil.StringerFunc 
 // FormatPreparedStmt fills place holders appeared in a prepared statements by given parameters.
 func FormatPreparedStmt(a *ExecStmt, pps variable.PreparedParams) string {
 	positions := ExtractPlaceholderPosisions(a.StmtNode)
-	posIdx := 0
 	buf := bytes.NewBuffer([]byte{})
 
-	// sql := a.Text
-	// buf.WriteString(sql[:positions[0]])
-	// prev := -1
+	sql := a.Text
+	prev := -1
 
-	// for _, pos := range positions {
-	// 	buf.WriteString(sql[prev+1 : pos])
-	// 	datum := pps[posIdx]
-	// 	str := types.DatumsToStrNoErr([]types.Datum{datum})
-	// 	if datum.Kind() == types.KindString {
-	// 		str = "'" + str + "'"
-	// 	}
-	// 	buf.WriteString(str)
-	// 	prev = pos
-	// }
-	// if prev != len(sql) {
-	// 	buf.WriteString(sql[prev+1:])
-	// }
-
-	for i, c := range a.Text {
-		if posIdx < len(positions) && i == positions[posIdx] {
-			datum := pps[posIdx]
-			str := types.DatumsToStrNoErr([]types.Datum{datum})
-			if datum.Kind() == types.KindString {
-				str = "'" + str + "'"
-			}
-			buf.WriteString(str)
-			posIdx++
-		} else {
-			buf.WriteRune(c)
+	for i, pos := range positions {
+		buf.WriteString(sql[prev+1 : pos])
+		datum := pps[i]
+		str := types.DatumsToStrNoErr([]types.Datum{datum})
+		if datum.Kind() == types.KindString {
+			str = "'" + str + "'"
 		}
+		buf.WriteString(str)
+		prev = pos
+	}
+	if prev != len(sql) {
+		buf.WriteString(sql[prev+1:])
 	}
 
 	return buf.String()

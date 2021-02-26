@@ -818,6 +818,45 @@ func FormatSQL(sql string, pps variable.PreparedParams) stringutil.StringerFunc 
 	}
 }
 
+// FormatPreparedStmt fills place holders appeared in a prepared statements by given parameters.
+func FormatPreparedStmt(a *ExecStmt, pps variable.PreparedParams) string {
+	v := &preparedStmtFormatter{}
+	(a.StmtNode).Accept(v)
+
+	buf := bytes.NewBuffer([]byte{})
+	posIdx := 0
+
+	for i, c := range a.Text {
+		if i == v.positions[posIdx] {
+			datum := pps[posIdx]
+			str := types.DatumsToStrNoErr([]types.Datum{datum})
+			if datum.Kind() == types.KindString {
+				str = "'" + str + "'"
+			}
+			buf.WriteString(str)
+			posIdx++
+		} else {
+			buf.WriteRune(c)
+		}
+	}
+	return buf.String()
+}
+
+type preparedStmtFormatter struct {
+	positions []int
+}
+
+func (v *preparedStmtFormatter) Enter(in ast.Node) (ast.Node, bool) {
+	if _, ok := in.(ast.ParamMarkerExpr); ok {
+		v.positions = append(v.positions, in.OriginTextPosition())
+	}
+	return in, false
+}
+
+func (v *preparedStmtFormatter) Leave(in ast.Node) (ast.Node, bool) {
+	return in, false
+}
+
 var (
 	sessionExecuteRunDurationInternal = metrics.SessionExecuteRunDuration.WithLabelValues(metrics.LblInternal)
 	sessionExecuteRunDurationGeneral  = metrics.SessionExecuteRunDuration.WithLabelValues(metrics.LblGeneral)
@@ -839,7 +878,7 @@ func (a *ExecStmt) FinishExecuteStmt(txnTS uint64, succ bool, hasMoreResults boo
 		}
 		sessVars.StmtCtx.RuntimeStatsColl.RegisterStats(a.Plan.ID(), statsWithCommit)
 	}
-	// `LowSlowQuery` and `SummaryStmt` must be called before recording `PrevStmt`.
+	// `LogSlowQuery` and `SummaryStmt` must be called before recording `PrevStmt`.
 	a.LogSlowQuery(txnTS, succ, hasMoreResults)
 	a.SummaryStmt(succ)
 	prevStmt := a.GetTextToLog()
@@ -892,8 +931,23 @@ func (a *ExecStmt) LogSlowQuery(txnTS uint64, succ bool, hasMoreResults bool) {
 		sql = FormatSQL(normalizedSQL, nil)
 	} else if sensitiveStmt, ok := a.StmtNode.(ast.SensitiveStmtNode); ok {
 		sql = FormatSQL(sensitiveStmt.SecureText(), nil)
+
+		// } else if len(sessVars.PreparedParams) > 0 {
+		// このパス直せばよさそう。a.Text じゃなくて、a から何とかクエリを復元できんか？
+		// prepared statement の実行シークエンスを追跡すればいけそう。
+		//
+		// TODO:
+		// * prepared statement からクエリを復元する関数を書く
+		// * E2E Test
+		//
+		// TODO OLD
+		// * prepared statement がどのような順序で実行されるか調べる
+		// * a.StmtNode を traverse してクエリを復元するコードを書く？
+		// 		* parser に関数としてあると嬉しくない？
+		//		* やっぱ Fortmat を直した方がいいかもなー。まあ後でええ。
+		// sql = FormatSQL(fillPreparedStmt(a, sessVars.PreparedParam))
 	} else {
-		sql = FormatSQL(a.Text, sessVars.PreparedParams)
+		sql = FormatSQL(a.Text, nil)
 	}
 
 	var indexNames string

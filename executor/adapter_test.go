@@ -19,7 +19,11 @@ import (
 
 	. "github.com/pingcap/check"
 	"github.com/pingcap/parser"
+	"github.com/pingcap/parser/mysql"
 	"github.com/pingcap/tidb/executor"
+	"github.com/pingcap/tidb/sessionctx/stmtctx"
+	"github.com/pingcap/tidb/sessionctx/variable"
+	"github.com/pingcap/tidb/types"
 	"github.com/pingcap/tidb/util/testkit"
 	"github.com/stretchr/testify/assert"
 )
@@ -48,35 +52,35 @@ func TestExtractPlaceholderPosisions(t *testing.T) {
 	assert.Equal(t, []int{26, 38, 41}, positions)
 }
 
-// func (s *testSuiteP2) TestFormatPreparedStmt(c *C) {
-// 	preparedParams := variable.PreparedParams{
-// 		types.NewIntDatum(1),
-// 		types.NewFloat64Datum(2),
-// 		types.NewDatum(nil),
-// 		types.NewStringDatum("abc"),
-// 		types.NewStringDatum("\"hello, 世界\""),
-// 		types.NewStringDatum("[1, 2, 3]"),
-// 		types.NewStringDatum("{}"),
-// 		types.NewStringDatum(`{"a": "9223372036854775809"}`),
-// 		mustParseTimeIntoDatum("2011-11-10 11:11:11.111111", mysql.TypeTimestamp, 6),
-// 	}
-// 	sql := "select ?, ?, ?, ?, ?, ?, ?, ?, ?;"
-// 	p := parser.New()
+func TestFormatPreparedStmt(t *testing.T) {
+	preparedParams := variable.PreparedParams{
+		types.NewIntDatum(1),
+		types.NewFloat64Datum(2),
+		types.NewDatum(nil),
+		types.NewStringDatum("abc"),
+		types.NewStringDatum("\"hello, 世界\""),
+		types.NewStringDatum("[1, 2, 3]"),
+		types.NewStringDatum("{}"),
+		types.NewStringDatum(`{"a": "9223372036854775809"}`),
+		mustParseTimeIntoDatum("2011-11-10 11:11:11.111111", mysql.TypeTimestamp, 6),
+	}
+	sql := "select ?, ?, ?, ?, ?, ?, ?, ?, ?;"
+	p := parser.New()
 
-// 	stmtNodes, _, _ := p.Parse(sql, "", "")
+	stmtNodes, _, _ := p.Parse(sql, "", "")
 
-// 	stmt := &executor.ExecStmt{Text: sql, StmtNode: stmtNodes[0]}
-// 	preparedSQL := executor.FormatPreparedStmt(stmt, preparedParams)
-// 	c.Check(preparedSQL, Equals, "select 1, 2, NULL, 'abc', '\"hello, 世界\"', '[1, 2, 3]', '{}', '{\"a\": \"9223372036854775809\"}', 2011-11-10 11:11:11.111111;")
+	stmt := &executor.ExecStmt{Text: sql, StmtNode: stmtNodes[0]}
+	preparedSQL := executor.FormatPreparedStmt(stmt, preparedParams)
+	assert.Equal(t, preparedSQL, "select 1, 2, NULL, 'abc', '\"hello, 世界\"', '[1, 2, 3]', '{}', '{\"a\": \"9223372036854775809\"}', 2011-11-10 11:11:11.111111;")
 
-// }
+}
 
-// // mustParseTimeIntoDatum is similar to ParseTime but panic if any error occurs.
-// func mustParseTimeIntoDatum(s string, tp byte, fsp int8) (d types.Datum) {
-// 	t, err := types.ParseTime(&stmtctx.StatementContext{TimeZone: time.UTC}, s, tp, fsp)
-// 	if err != nil {
-// 		panic("ParseTime fail")
-// 	}
-// 	d.SetMysqlTime(t)
-// 	return
-// }
+// mustParseTimeIntoDatum is similar to ParseTime but panic if any error occurs.
+func mustParseTimeIntoDatum(s string, tp byte, fsp int8) (d types.Datum) {
+	t, err := types.ParseTime(&stmtctx.StatementContext{TimeZone: time.UTC}, s, tp, fsp)
+	if err != nil {
+		panic("ParseTime fail")
+	}
+	d.SetMysqlTime(t)
+	return
+}

@@ -818,28 +818,28 @@ func FormatSQL(sql string, pps variable.PreparedParams) stringutil.StringerFunc 
 	}
 }
 
-// // FormatPreparedStmt fills place holders appeared in a prepared statements by given parameters.
-// func FormatPreparedStmt(a *ExecStmt, pps variable.PreparedParams) string {
-// 	positions := ExtractPlaceholderPosisions(a)
-// 	posIdx := 0
-// 	buf := bytes.NewBuffer([]byte{})
+// FormatPreparedStmt fills place holders appeared in a prepared statements by given parameters.
+func FormatPreparedStmt(a *ExecStmt, pps variable.PreparedParams) string {
+	positions := ExtractPlaceholderPosisions(a.StmtNode)
+	posIdx := 0
+	buf := bytes.NewBuffer([]byte{})
 
-// 	for i, c := range a.Text {
-// 		if posIdx < len(positions) && i == positions[posIdx] {
-// 			datum := pps[posIdx]
-// 			str := types.DatumsToStrNoErr([]types.Datum{datum})
-// 			if datum.Kind() == types.KindString {
-// 				str = "'" + str + "'"
-// 			}
-// 			buf.WriteString(str)
-// 			posIdx++
-// 		} else {
-// 			buf.WriteRune(c)
-// 		}
-// 	}
+	for i, c := range a.Text {
+		if posIdx < len(positions) && i == positions[posIdx] {
+			datum := pps[posIdx]
+			str := types.DatumsToStrNoErr([]types.Datum{datum})
+			if datum.Kind() == types.KindString {
+				str = "'" + str + "'"
+			}
+			buf.WriteString(str)
+			posIdx++
+		} else {
+			buf.WriteRune(c)
+		}
+	}
 
-// 	return buf.String()
-// }
+	return buf.String()
+}
 
 func ExtractPlaceholderPosisions(node ast.StmtNode) []int {
 	px := &placeholderExtractor{}

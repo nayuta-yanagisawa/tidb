@@ -818,43 +818,49 @@ func FormatSQL(sql string, pps variable.PreparedParams) stringutil.StringerFunc 
 	}
 }
 
-// FormatPreparedStmt fills place holders appeared in a prepared statements by given parameters.
-func FormatPreparedStmt(a *ExecStmt, pps variable.PreparedParams) string {
-	v := &preparedStmtFormatter{}
-	(a.StmtNode).Accept(v)
+// // FormatPreparedStmt fills place holders appeared in a prepared statements by given parameters.
+// func FormatPreparedStmt(a *ExecStmt, pps variable.PreparedParams) string {
+// 	positions := ExtractPlaceholderPosisions(a)
+// 	posIdx := 0
+// 	buf := bytes.NewBuffer([]byte{})
 
-	buf := bytes.NewBuffer([]byte{})
-	posIdx := 0
+// 	for i, c := range a.Text {
+// 		if posIdx < len(positions) && i == positions[posIdx] {
+// 			datum := pps[posIdx]
+// 			str := types.DatumsToStrNoErr([]types.Datum{datum})
+// 			if datum.Kind() == types.KindString {
+// 				str = "'" + str + "'"
+// 			}
+// 			buf.WriteString(str)
+// 			posIdx++
+// 		} else {
+// 			buf.WriteRune(c)
+// 		}
+// 	}
 
-	for i, c := range a.Text {
-		if i == v.positions[posIdx] {
-			datum := pps[posIdx]
-			str := types.DatumsToStrNoErr([]types.Datum{datum})
-			if datum.Kind() == types.KindString {
-				str = "'" + str + "'"
-			}
-			buf.WriteString(str)
-			posIdx++
-		} else {
-			buf.WriteRune(c)
-		}
-	}
-	return buf.String()
+// 	return buf.String()
+// }
+
+func ExtractPlaceholderPosisions(node ast.StmtNode) []int {
+	px := &placeholderExtractor{}
+	node.Accept(px)
+	return px.positions
 }
 
-type preparedStmtFormatter struct {
+type placeholderExtractor struct {
 	positions []int
 }
 
-func (v *preparedStmtFormatter) Enter(in ast.Node) (ast.Node, bool) {
+func (px *placeholderExtractor) Enter(in ast.Node) (ast.Node, bool) {
 	if _, ok := in.(ast.ParamMarkerExpr); ok {
-		v.positions = append(v.positions, in.OriginTextPosition())
+		px.positions = append(px.positions, in.OriginTextPosition())
 	}
 	return in, false
+
 }
 
-func (v *preparedStmtFormatter) Leave(in ast.Node) (ast.Node, bool) {
-	return in, false
+func (px *placeholderExtractor) Leave(in ast.Node) (ast.Node, bool) {
+	return in, true
 }
 
 var (

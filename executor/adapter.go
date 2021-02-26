@@ -818,43 +818,51 @@ func FormatSQL(sql string, pps variable.PreparedParams) stringutil.StringerFunc 
 	}
 }
 
-// FormatPreparedStmt fills place holders appeared in a prepared statements by given parameters.
+// FormatPreparedStmt replaces placeholders appeared in a prepared statements by given parameters.
 func FormatPreparedStmt(a *ExecStmt, pps variable.PreparedParams) string {
-	positions := Extract(a.StmtNode)
+	px := &positionExtractor{}
+	positions := px.exec(a.StmtNode)
+
+	original := a.Text
 	buf := bytes.NewBuffer([]byte{})
 
-	sql := a.Text
 	for i, pos := range positions {
+		// Copy the first part of the original query that does not contain any placeholders.
 		if i == 0 {
-			buf.WriteString(sql[:pos])
+			buf.WriteString(original[:pos])
 		}
 
-		datum := pps[i]
-		str := types.DatumsToStrNoErr([]types.Datum{datum})
-		if datum.Kind() == types.KindString {
-			str = "'" + str + "'"
-		}
-		buf.WriteString(str)
+		// Replace a placeholder by the corresponding parameter.
+		buf.WriteString(convertParamToString(pps[i]))
 
+		// Copy
 		if i < len(positions)-1 {
-			next := positions[i+1]
-			buf.WriteString(sql[pos+1 : next])
+			// Copy a substring between parameters.
+			buf.WriteString(original[pos+1 : positions[i+1]])
 		} else {
-			buf.WriteString(sql[pos+1:])
+			// Copy the rest of the original query.
+			buf.WriteString(original[pos+1:])
 		}
 	}
 
 	return buf.String()
 }
 
-func Extract(node ast.StmtNode) []int {
-	px := &positionExtractor{}
-	node.Accept(px)
-	return px.positions
+func convertParamToString(d types.Datum) string {
+	str := types.DatumsToStrNoErr([]types.Datum{d})
+	if d.Kind() == types.KindString {
+		str = "'" + str + "'"
+	}
+	return str
 }
 
 type positionExtractor struct {
 	positions []int
+}
+
+func (px *positionExtractor) exec(node ast.StmtNode) []int {
+	node.Accept(px)
+	return px.positions
 }
 
 func (px *positionExtractor) Enter(in ast.Node) (ast.Node, bool) {

@@ -820,40 +820,44 @@ func FormatSQL(sql string, pps variable.PreparedParams) stringutil.StringerFunc 
 
 // FormatPreparedStmt fills place holders appeared in a prepared statements by given parameters.
 func FormatPreparedStmt(a *ExecStmt, pps variable.PreparedParams) string {
-	positions := ExtractPlaceholderPosisions(a.StmtNode)
+	positions := Extract(a.StmtNode)
 	buf := bytes.NewBuffer([]byte{})
 
 	sql := a.Text
-	prev := -1
-
 	for i, pos := range positions {
-		buf.WriteString(sql[prev+1 : pos])
+		if i == 0 {
+			buf.WriteString(sql[:pos])
+		}
+
 		datum := pps[i]
 		str := types.DatumsToStrNoErr([]types.Datum{datum})
 		if datum.Kind() == types.KindString {
 			str = "'" + str + "'"
 		}
 		buf.WriteString(str)
-		prev = pos
-	}
-	if prev != len(sql) {
-		buf.WriteString(sql[prev+1:])
+
+		if i < len(positions)-1 {
+			next := positions[i+1]
+			buf.WriteString(sql[pos+1 : next])
+		} else {
+			buf.WriteString(sql[pos+1:])
+		}
 	}
 
 	return buf.String()
 }
 
-func ExtractPlaceholderPosisions(node ast.StmtNode) []int {
-	px := &placeholderExtractor{}
+func Extract(node ast.StmtNode) []int {
+	px := &positionExtractor{}
 	node.Accept(px)
 	return px.positions
 }
 
-type placeholderExtractor struct {
+type positionExtractor struct {
 	positions []int
 }
 
-func (px *placeholderExtractor) Enter(in ast.Node) (ast.Node, bool) {
+func (px *positionExtractor) Enter(in ast.Node) (ast.Node, bool) {
 	if _, ok := in.(ast.ParamMarkerExpr); ok {
 		px.positions = append(px.positions, in.OriginTextPosition())
 	}
@@ -861,7 +865,7 @@ func (px *placeholderExtractor) Enter(in ast.Node) (ast.Node, bool) {
 
 }
 
-func (px *placeholderExtractor) Leave(in ast.Node) (ast.Node, bool) {
+func (px *positionExtractor) Leave(in ast.Node) (ast.Node, bool) {
 	return in, true
 }
 

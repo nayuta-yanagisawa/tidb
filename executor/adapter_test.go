@@ -47,7 +47,7 @@ func TestExtractPlaceholderPosisions(t *testing.T) {
 	sql := "select * from t where a = ? and b in (?, ?);"
 	p := parser.New()
 	stmtNodes, _, _ := p.Parse(sql, "", "")
-	positions := executor.ExtractPlaceholderPosisions(stmtNodes[0])
+	positions := executor.Extract(stmtNodes[0])
 	assert.Equal(t, []int{26, 38, 41}, positions)
 }
 

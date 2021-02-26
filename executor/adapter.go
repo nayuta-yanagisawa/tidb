@@ -824,6 +824,24 @@ func FormatPreparedStmt(a *ExecStmt, pps variable.PreparedParams) string {
 	posIdx := 0
 	buf := bytes.NewBuffer([]byte{})
 
+	// sql := a.Text
+	// buf.WriteString(sql[:positions[0]])
+	// prev := -1
+
+	// for _, pos := range positions {
+	// 	buf.WriteString(sql[prev+1 : pos])
+	// 	datum := pps[posIdx]
+	// 	str := types.DatumsToStrNoErr([]types.Datum{datum})
+	// 	if datum.Kind() == types.KindString {
+	// 		str = "'" + str + "'"
+	// 	}
+	// 	buf.WriteString(str)
+	// 	prev = pos
+	// }
+	// if prev != len(sql) {
+	// 	buf.WriteString(sql[prev+1:])
+	// }
+
 	for i, c := range a.Text {
 		if posIdx < len(positions) && i == positions[posIdx] {
 			datum := pps[posIdx]

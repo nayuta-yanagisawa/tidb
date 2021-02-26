@@ -807,14 +807,14 @@ func (a *ExecStmt) logAudit() {
 }
 
 // FormatSQL is used to format the original SQL, e.g. truncating long SQL, appending prepared arguments.
-func FormatSQL(sql string, pps variable.PreparedParams) stringutil.StringerFunc {
+func FormatSQL(sql string) stringutil.StringerFunc {
 	return func() string {
 		cfg := config.GetGlobalConfig()
 		length := len(sql)
 		if maxQueryLen := atomic.LoadUint64(&cfg.Log.QueryLogMaxLen); uint64(length) > maxQueryLen {
 			sql = fmt.Sprintf("%.*q(len:%d)", maxQueryLen, sql, length)
 		}
-		return QueryReplacer.Replace(sql) + pps.String()
+		return QueryReplacer.Replace(sql)
 	}
 }
 
@@ -839,16 +839,11 @@ func (a *ExecStmt) FinishExecuteStmt(txnTS uint64, succ bool, hasMoreResults boo
 		}
 		sessVars.StmtCtx.RuntimeStatsColl.RegisterStats(a.Plan.ID(), statsWithCommit)
 	}
-	// `LowSlowQuery` and `SummaryStmt` must be called before recording `PrevStmt`.
+	// `LogSlowQuery` and `SummaryStmt` must be called before recording `PrevStmt`.
 	a.LogSlowQuery(txnTS, succ, hasMoreResults)
 	a.SummaryStmt(succ)
 	prevStmt := a.GetTextToLog()
-	if sessVars.EnableRedactLog {
-		sessVars.PrevStmt = FormatSQL(prevStmt, nil)
-	} else {
-		pps := types.CloneRow(sessVars.PreparedParams)
-		sessVars.PrevStmt = FormatSQL(prevStmt, pps)
-	}
+	sessVars.PrevStmt = FormatSQL(prevStmt)
 
 	executeDuration := time.Since(sessVars.StartTime) - sessVars.DurationCompile
 	if sessVars.InRestrictedSQL {
@@ -886,15 +881,8 @@ func (a *ExecStmt) LogSlowQuery(txnTS uint64, succ bool, hasMoreResults bool) {
 	if (!enable || costTime < threshold) && !force {
 		return
 	}
-	var sql stringutil.StringerFunc
-	normalizedSQL, digest := sessVars.StmtCtx.SQLDigest()
-	if sessVars.EnableRedactLog {
-		sql = FormatSQL(normalizedSQL, nil)
-	} else if sensitiveStmt, ok := a.StmtNode.(ast.SensitiveStmtNode); ok {
-		sql = FormatSQL(sensitiveStmt.SecureText(), nil)
-	} else {
-		sql = FormatSQL(a.Text, sessVars.PreparedParams)
-	}
+	sql := FormatSQL(a.GetTextToLog())
+	_, digest := sessVars.StmtCtx.SQLDigest()
 
 	var indexNames string
 	if len(sessVars.StmtCtx.IndexNames) > 0 {
@@ -1155,12 +1143,81 @@ func (a *ExecStmt) SummaryStmt(succ bool) {
 // GetTextToLog return the query text to log.
 func (a *ExecStmt) GetTextToLog() string {
 	var sql string
-	if a.Ctx.GetSessionVars().EnableRedactLog {
+	sessVars := a.Ctx.GetSessionVars()
+	if sessVars.EnableRedactLog {
 		sql, _ = a.Ctx.GetSessionVars().StmtCtx.SQLDigest()
 	} else if sensitiveStmt, ok := a.StmtNode.(ast.SensitiveStmtNode); ok {
 		sql = sensitiveStmt.SecureText()
 	} else {
-		sql = a.Text
+		pps := sessVars.PreparedParams
+		if len(pps) == 0 {
+			sql = a.Text
+		} else {
+			sql = ReplacePlaceholder(a, pps)
+		}
 	}
 	return sql
+}
+
+// ReplacePlaceholder replaces placeholders appeared in a prepared statements by given parameters.
+func ReplacePlaceholder(a *ExecStmt, pps variable.PreparedParams) string {
+	px := &placeholderReplacer{}
+	positions := px.replace(a.StmtNode)
+
+	// Something goes wrong. Return SQL text including placeholders.
+	if len(positions) != len(pps) {
+		return a.Text
+	}
+
+	original := a.Text
+	buf := bytes.NewBuffer([]byte{})
+
+	for i, pos := range positions {
+		// Copy the first part of the original query.
+		if i == 0 {
+			buf.WriteString(original[:pos])
+		}
+
+		// Replace a placeholder by the corresponding parameter.
+		buf.WriteString(convertParamToString(pps[i]))
+
+		if i < len(positions)-1 {
+			// Copy a substring between parameters.
+			buf.WriteString(original[pos+1 : positions[i+1]])
+		} else {
+			// Copy the rest of the original query.
+			buf.WriteString(original[pos+1:])
+		}
+	}
+
+	return buf.String()
+}
+
+func convertParamToString(d types.Datum) string {
+	str := types.DatumsToStrNoErr([]types.Datum{d})
+	if d.Kind() == types.KindString {
+		str = "'" + str + "'"
+	}
+	return str
+}
+
+type placeholderReplacer struct {
+	positions []int
+}
+
+func (px *placeholderReplacer) replace(node ast.StmtNode) []int {
+	node.Accept(px)
+	return px.positions
+}
+
+func (px *placeholderReplacer) Enter(in ast.Node) (ast.Node, bool) {
+	if _, ok := in.(ast.ParamMarkerExpr); ok {
+		px.positions = append(px.positions, in.OriginTextPosition())
+	}
+	return in, false
+
+}
+
+func (px *placeholderReplacer) Leave(in ast.Node) (ast.Node, bool) {
+	return in, true
 }

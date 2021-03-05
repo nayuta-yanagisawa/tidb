@@ -187,6 +187,20 @@ func (s *testSerialDBSuite) TestAddIndexWithPK(c *C) {
 	testAddIndexWithPK(tk, s, c)
 }
 
+func (s *testSerialDBSuite) TestAddMultiIndexes(c *C) {
+	tk := testkit.NewTestKit(c, s.store)
+	tk.MustExec("use " + s.schemaName)
+	defer config.RestoreFunc()()
+	config.UpdateGlobal(func(conf *config.Config) {
+		conf.AlterPrimaryKey = false
+	})
+
+	tk.MustExec("drop table if exists test_add_multi_indexes")
+	tk.MustExec("create table test_add_multi_indexes" +
+		"(a int not null, b int not null default '0', primary key(a))")
+	tk.MustExec("alter table test_add_multi_indexes add index idx1 (a), add index idx2 (b)")
+}
+
 func (s *testDBSuite5) TestAddIndexWithDupIndex(c *C) {
 	tk := testkit.NewTestKit(c, s.store)
 	tk.MustExec("use " + s.schemaName)
